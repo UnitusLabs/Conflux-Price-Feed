@@ -76,6 +76,18 @@
   }
   .btn:hover { border-color: var(--accent); }
   .meta { color: var(--text-muted); font-size: 12.5px; }
+  .countdown {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--text-secondary); font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+  }
+  .countdown svg { transform: rotate(-90deg); flex: none; }
+  .countdown .track { fill: none; stroke: var(--hairline); stroke-width: 2.5; }
+  .countdown .prog {
+    fill: none; stroke: var(--accent); stroke-width: 2.5;
+    stroke-linecap: round; stroke-dasharray: 50.27;
+    transition: stroke-dashoffset 1s linear;
+  }
   .contract-chip {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 12px; color: var(--text-secondary);
@@ -178,6 +190,13 @@
     </div>
     <a id="contract-link" class="contract-chip" target="_blank" rel="noopener" title="Open oracle proxy contract in ConfluxScan"></a>
     <button class="btn" id="refresh-btn">Refresh now</button>
+    <span class="countdown" id="countdown" title="Auto-refreshes every 30 seconds, including in background tabs">
+      <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+        <circle class="track" cx="10" cy="10" r="8"></circle>
+        <circle class="prog" id="countdown-ring" cx="10" cy="10" r="8"></circle>
+      </svg>
+      <span id="countdown-num">30s</span>
+    </span>
     <span class="meta" id="status-line">Loading…</span>
   </div>
 
@@ -245,9 +264,8 @@ const FRESH_MAX_S   = 75 * 60;
 const DELAYED_MAX_S = 3 * 3600;
 
 let network = "mainnet";
-let refreshTimer = null;
-let countdownTimer = null;
 let nextRefreshAt = 0;
+let inFlight = false;
 // per-network: feedId -> { price, conf, expo, publishTime, prevPrice, prevPublishTime }
 const state = { mainnet: new Map(), testnet: new Map() };
 
@@ -391,6 +409,20 @@ function showError(msg) {
 
 /* ── Refresh loop ──────────────────────────────────────── */
 let lastFetchOk = null;
+
+async function doRefresh() {
+  if (inFlight) return;
+  inFlight = true;
+  updateCountdown();
+  try {
+    await refresh();
+  } finally {
+    inFlight = false;
+    nextRefreshAt = Date.now() + REFRESH_MS;
+    updateCountdown();
+  }
+}
+
 async function refresh() {
   const net = network;
   try {
@@ -416,26 +448,45 @@ async function refresh() {
   if (net !== network) return; // user switched networks mid-fetch
   renderTiles();
   renderTable();
-  nextRefreshAt = Date.now() + REFRESH_MS;
+}
+
+const RING_C = 50.27; // circumference of the r=8 countdown ring
+function secondsLeft() {
+  return Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000));
+}
+function updateCountdown() {
+  const left = secondsLeft();
+  document.getElementById("countdown-num").textContent = inFlight ? "…" : `${left}s`;
+  const frac = inFlight ? 1 : Math.min(1, Math.max(0, left / (REFRESH_MS / 1000)));
+  document.getElementById("countdown-ring").style.strokeDashoffset =
+    (RING_C * (1 - frac)).toFixed(2);
 }
 
 function tick() {
-  const left = Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000));
-  const okStr = lastFetchOk
-    ? `Last read ${lastFetchOk.toLocaleTimeString()} · next in ${left}s`
-    : "Connecting…";
-  setStatus(okStr);
+  if (!inFlight && Date.now() >= nextRefreshAt) doRefresh();
+  updateCountdown();
+  setStatus(lastFetchOk ? `Last read ${lastFetchOk.toLocaleTimeString()}` : "Connecting…");
   // keep "updated Xm ago" labels current without waiting for a fetch
-  if (left % 10 === 0) { renderTiles(); renderTable(); }
+  if (secondsLeft() % 10 === 0) { renderTiles(); renderTable(); }
 }
 
-function startLoop() {
-  clearInterval(refreshTimer);
-  clearInterval(countdownTimer);
-  refresh();
-  refreshTimer = setInterval(refresh, REFRESH_MS);
-  countdownTimer = setInterval(tick, 1000);
+// Drive the clock from a Web Worker: browsers throttle page timers in
+// background tabs, but worker timers keep firing, so the 30s refresh
+// continues while the tab is hidden.
+function startTicker() {
+  try {
+    const src = "setInterval(function(){postMessage(0)},1000)";
+    const worker = new Worker(URL.createObjectURL(new Blob([src], { type: "application/javascript" })));
+    worker.onmessage = tick;
+  } catch (e) {
+    setInterval(tick, 1000);
+  }
 }
+
+// Catch up instantly when the tab becomes visible again.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) tick();
+});
 
 function switchNetwork(net) {
   if (net === network) return;
@@ -445,12 +496,12 @@ function switchNetwork(net) {
   renderTiles();
   renderTable();
   showError(null);
-  startLoop();
+  doRefresh();
 }
 
 document.getElementById("net-mainnet").addEventListener("click", () => switchNetwork("mainnet"));
 document.getElementById("net-testnet").addEventListener("click", () => switchNetwork("testnet"));
-document.getElementById("refresh-btn").addEventListener("click", () => startLoop());
+document.getElementById("refresh-btn").addEventListener("click", () => doRefresh());
 document.addEventListener("click", (e) => {
   const btn = e.target.closest(".copy");
   if (!btn) return;
@@ -463,7 +514,8 @@ document.addEventListener("click", (e) => {
 renderHeader();
 renderTiles();
 renderTable();
-startLoop();
+startTicker();
+doRefresh();
 </script>
 </body>
 </html>
