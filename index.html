@@ -218,7 +218,7 @@
           <th class="num">Price</th>
           <th class="num">Confidence (±)</th>
           <th class="num">Expo</th>
-          <th>Published (UTC)</th>
+          <th>Published (local time)</th>
           <th>Freshness</th>
         </tr>
       </thead>
@@ -339,6 +339,12 @@ function freshness(publishTime) {
   if (age <= DELAYED_MAX_S) return { cls: "delayed", text: "Delayed" };
   return { cls: "stale", text: "Stale" };
 }
+function fmtLocal(unixSeconds) {
+  return new Date(unixSeconds * 1000).toLocaleString(undefined, {
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+  });
+}
 function shortId(id) { return id.slice(0, 10) + "…" + id.slice(-6); }
 function esc(s) { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 
@@ -391,7 +397,7 @@ function renderTable() {
       <td class="num">${d ? fmtPrice(scaledPrice(d)) : "—"}</td>
       <td class="num">${d ? fmtPrice(scaledConf(d)).slice(1) : "—"}</td>
       <td class="num">${d ? d.expo : "—"}</td>
-      <td>${d ? new Date(d.publishTime * 1000).toISOString().replace("T", " ").slice(0, 19) : "—"}</td>
+      <td title="${d ? new Date(d.publishTime * 1000).toISOString().replace("T", " ").slice(0, 19) + " UTC" : ""}">${d ? fmtLocal(d.publishTime) : "—"}</td>
       <td>${fr ? `<span class="badge ${fr.cls}"><span class="dot" aria-hidden="true"></span>${fr.text}</span>` : "—"}</td>
     </tr>`;
   }).join("");
