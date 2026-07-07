@@ -124,6 +124,10 @@
     margin: 8px 0 2px; color: var(--text-primary);
   }
   .tile .value.pending { color: var(--text-muted); font-weight: 400; }
+  @keyframes flash-up   { from { background: rgba(12,163,12,0.20); } to { background: transparent; } }
+  @keyframes flash-down { from { background: rgba(208,59,59,0.20); } to { background: transparent; } }
+  .tile .value.flash-up   { animation: flash-up 2.4s ease-out; border-radius: 6px; }
+  .tile .value.flash-down { animation: flash-down 2.4s ease-out; border-radius: 6px; }
   .tile .conf { font-size: 12.5px; color: var(--text-muted); }
   .tile .delta { font-size: 12.5px; margin-top: 2px; }
   .delta.up   { color: var(--good-text); }
@@ -353,20 +357,22 @@ function renderTiles() {
     const v = scaledPrice(d);
     const fr = freshness(d.publishTime);
     let deltaHtml = "";
-    if (d.prevPrice != null && d.prevPublishTime !== d.publishTime) {
-      const prev = Number(d.prevPrice) * Math.pow(10, d.expo);
-      const pct = ((v - prev) / prev) * 100;
-      if (isFinite(pct) && pct !== 0) {
-        const up = pct > 0;
-        deltaHtml = `<div class="delta ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${Math.abs(pct).toFixed(2)}% vs previous update</div>`;
-      }
+    let flashCls = "";
+    if (d.change && isFinite(d.change.pct)) {
+      const up = d.change.diff > 0;
+      deltaHtml = `<div class="delta ${up ? "up" : "down"}" title="Change between the last two reads that differed">
+        ${up ? "▲" : "▼"} ${fmtPrice(Math.abs(d.change.diff))}
+        (${up ? "+" : "−"}${Math.abs(d.change.pct).toFixed(2)}%) · ${fmtAge((Date.now() - d.change.at) / 1000)}
+      </div>`;
+      // Flash once on the render that first shows the change, not on later re-renders.
+      if (Date.now() - d.change.at < 2500) flashCls = up ? " flash-up" : " flash-down";
     }
     return `<div class="tile">
       <div class="label">
         <span>${esc(f.symbol)}</span>
         <span class="badge ${fr.cls}"><span class="dot" aria-hidden="true"></span>${fr.text}</span>
       </div>
-      <div class="value">${fmtPrice(v)}</div>
+      <div class="value${flashCls}">${fmtPrice(v)}</div>
       <div class="conf">± ${fmtPrice(scaledConf(d)).slice(1)} confidence</div>
       ${deltaHtml}
       <div class="foot"><span>updated ${fmtAge(Date.now() / 1000 - d.publishTime)}</span></div>
@@ -431,12 +437,13 @@ async function refresh() {
     results.forEach((r, i) => {
       const id = FEEDS[i].id;
       const old = data.get(id);
-      if (old && old.publishTime !== r.publishTime) {
-        r.prevPrice = old.price;
-        r.prevPublishTime = old.publishTime;
+      // Compare consecutive refresh rounds; keep the last observed change.
+      if (old && old.price !== r.price) {
+        const prev = Number(old.price) * Math.pow(10, old.expo);
+        const cur = scaledPrice(r);
+        r.change = { prev, diff: cur - prev, pct: ((cur - prev) / prev) * 100, at: Date.now() };
       } else if (old) {
-        r.prevPrice = old.prevPrice;
-        r.prevPublishTime = old.prevPublishTime;
+        r.change = old.change;
       }
       data.set(id, r);
     });
