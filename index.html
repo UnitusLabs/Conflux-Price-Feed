@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conflux eSpace Price Oracle — Live Feeds</title>
+<style>
+  :root {
+    --page:           #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --hairline:       #e1e0d9;
+    --border:         rgba(11,11,11,0.10);
+    --accent:         #2a78d6;
+    --good:           #0ca30c;
+    --good-text:      #006300;
+    --warning:        #fab219;
+    --warning-text:   #7a5200;
+    --critical:       #d03b3b;
+    --critical-text:  #a32c2c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page:           #0d0d0d;
+      --surface-1:      #1a1a19;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --hairline:       #2c2c2a;
+      --border:         rgba(255,255,255,0.10);
+      --accent:         #3987e5;
+      --good-text:      #0ca30c;
+      --warning-text:   #fab219;
+      --critical-text:  #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 20px 48px; }
+
+  /* ── Header ─────────────────────────────────────────── */
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; }
+  h1 { font-size: 20px; font-weight: 650; margin: 0; }
+  .sub { color: var(--text-secondary); font-size: 13px; }
+  .sub a { color: var(--accent); text-decoration: none; }
+  .sub a:hover { text-decoration: underline; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    margin: 18px 0 22px;
+  }
+  .seg {
+    display: inline-flex; border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; background: var(--surface-1);
+  }
+  .seg button {
+    appearance: none; border: 0; background: transparent;
+    color: var(--text-secondary); font: inherit; font-size: 13px;
+    padding: 6px 14px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] {
+    background: var(--accent); color: #fff; font-weight: 600;
+  }
+  .btn {
+    appearance: none; font: inherit; font-size: 13px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--surface-1); color: var(--text-primary);
+    padding: 6px 14px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .meta { color: var(--text-muted); font-size: 12.5px; }
+  .contract-chip {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; color: var(--text-secondary);
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 6px; padding: 3px 8px; text-decoration: none;
+  }
+  .contract-chip:hover { border-color: var(--accent); color: var(--accent); }
+
+  #error-banner {
+    display: none; margin: 0 0 18px; padding: 10px 14px;
+    border: 1px solid var(--critical); border-radius: 8px;
+    background: var(--surface-1); color: var(--critical-text); font-size: 13px;
+  }
+
+  /* ── Stat tiles ─────────────────────────────────────── */
+  .tiles {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  .tile {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px 14px;
+    min-height: 128px;
+    display: flex; flex-direction: column;
+  }
+  .tile .label {
+    font-size: 13px; color: var(--text-secondary); font-weight: 550;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .tile .value {
+    font-size: 30px; font-weight: 600; letter-spacing: -0.01em;
+    margin: 8px 0 2px; color: var(--text-primary);
+  }
+  .tile .value.pending { color: var(--text-muted); font-weight: 400; }
+  .tile .conf { font-size: 12.5px; color: var(--text-muted); }
+  .tile .delta { font-size: 12.5px; margin-top: 2px; }
+  .delta.up   { color: var(--good-text); }
+  .delta.down { color: var(--critical-text); }
+  .tile .foot {
+    margin-top: auto; padding-top: 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    font-size: 12px; color: var(--text-muted);
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .badge.fresh    { color: var(--good-text); }
+  .badge.fresh    .dot { background: var(--good); }
+  .badge.delayed  { color: var(--warning-text); }
+  .badge.delayed  .dot { background: var(--warning); border-radius: 2px; }
+  .badge.stale    { color: var(--critical-text); }
+  .badge.stale    .dot { background: var(--critical); border-radius: 0; transform: rotate(45deg); }
+
+  /* ── Table view ─────────────────────────────────────── */
+  h2 { font-size: 15px; font-weight: 650; margin: 34px 0 10px; }
+  .table-scroll {
+    overflow-x: auto; border: 1px solid var(--border);
+    border-radius: 12px; background: var(--surface-1);
+  }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; }
+  th, td { text-align: left; padding: 9px 14px; font-size: 13px; }
+  th {
+    color: var(--text-muted); font-weight: 550; font-size: 12px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  td { border-bottom: 1px solid var(--hairline); }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .copy {
+    appearance: none; border: 0; background: none; cursor: pointer;
+    color: var(--accent); font-size: 11.5px; padding: 0 0 0 6px;
+  }
+
+  footer { margin-top: 26px; color: var(--text-muted); font-size: 12.5px; }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Conflux eSpace Price Oracle</h1>
+    <span class="sub">Pyth-compatible feeds from
+      <a href="https://github.com/conflux-fans/oracle-contracts" target="_blank" rel="noopener">conflux-fans/oracle-contracts</a>
+    </span>
+  </header>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Network">
+      <button id="net-mainnet" aria-pressed="true">Mainnet</button>
+      <button id="net-testnet" aria-pressed="false">Testnet</button>
+    </div>
+    <a id="contract-link" class="contract-chip" target="_blank" rel="noopener" title="Open oracle proxy contract in ConfluxScan"></a>
+    <button class="btn" id="refresh-btn">Refresh now</button>
+    <span class="meta" id="status-line">Loading…</span>
+  </div>
+
+  <div id="error-banner" role="alert"></div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <h2>Feed details</h2>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Asset</th>
+          <th>Feed ID</th>
+          <th class="num">Price</th>
+          <th class="num">Confidence (±)</th>
+          <th class="num">Expo</th>
+          <th>Published (UTC)</th>
+          <th>Freshness</th>
+        </tr>
+      </thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+
+  <footer>
+    Prices read on-chain via <code>getPriceUnsafe(bytes32)</code> on the oracle proxy.
+    Stored values use <code>expo&nbsp;=&nbsp;-8</code> (price&nbsp;=&nbsp;value&nbsp;×&nbsp;10⁻⁸).
+    On-chain update frequency is 1&nbsp;hour per feed; this page re-reads the chain every 30&nbsp;seconds.
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+const FEEDS = [
+  { symbol: "BTC/USD",   id: "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43" },
+  { symbol: "ETH/USD",   id: "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace" },
+  { symbol: "CFX/USD",   id: "0x8879170230c9603342f3837cf9a8e76c61791198fb1271bb2552c9af7b33c933" },
+  { symbol: "BNB/USD",   id: "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f" },
+  { symbol: "USDT/USD",  id: "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b" },
+  { symbol: "USDC/USD",  id: "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a" },
+  { symbol: "AxCNH/USD", id: "0x6412f0e5469e5ab64fccf0eea916ae6db2bcd56568daaaf583b3054d465e8e2d" },
+];
+
+const NETWORKS = {
+  mainnet: {
+    label: "Mainnet",
+    contract: "0x5286BD91e2C79fE066926a15193C7e531bBF6750",
+    rpcs: ["https://evm.confluxrpc.com", "https://evm.confluxrpc.org", "https://conflux-espace-public.unifra.io"],
+    scan: "https://evm.confluxscan.io/address/",
+  },
+  testnet: {
+    label: "Testnet",
+    contract: "0x838c40B3904FAfBc21b670c97b0dFeE7D8D0a016",
+    rpcs: ["https://evmtestnet.confluxrpc.com", "https://evmtestnet.confluxrpc.org"],
+    scan: "https://evmtestnet.confluxscan.io/address/",
+  },
+};
+
+const SELECTOR_GET_PRICE_UNSAFE = "0x96834ad3"; // getPriceUnsafe(bytes32)
+const REFRESH_MS = 30_000;
+// Feeds update on-chain every 1h; grade freshness against that cadence.
+const FRESH_MAX_S   = 75 * 60;
+const DELAYED_MAX_S = 3 * 3600;
+
+let network = "mainnet";
+let refreshTimer = null;
+let countdownTimer = null;
+let nextRefreshAt = 0;
+// per-network: feedId -> { price, conf, expo, publishTime, prevPrice, prevPublishTime }
+const state = { mainnet: new Map(), testnet: new Map() };
+
+/* ── ABI decoding ──────────────────────────────────────── */
+function word(hex, i) { return BigInt("0x" + hex.slice(2 + i * 64, 2 + (i + 1) * 64)); }
+function toSigned(v) { return v >= (1n << 255n) ? v - (1n << 256n) : v; }
+
+function decodePrice(hex) {
+  if (!hex || hex === "0x" || hex.length < 2 + 4 * 64) throw new Error("empty return data");
+  return {
+    price: toSigned(word(hex, 0)),
+    conf: word(hex, 1),
+    expo: Number(toSigned(word(hex, 2))),
+    publishTime: Number(word(hex, 3)),
+  };
+}
+
+/* ── RPC (batched, with endpoint fallback) ─────────────── */
+async function rpcBatch(net) {
+  const cfg = NETWORKS[net];
+  const batch = FEEDS.map((f, i) => ({
+    jsonrpc: "2.0", id: i + 1, method: "eth_call",
+    params: [{ to: cfg.contract, data: SELECTOR_GET_PRICE_UNSAFE + f.id.slice(2) }, "latest"],
+  }));
+  let lastErr;
+  for (const url of cfg.rpcs) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(batch),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status} from ${new URL(url).host}`);
+      const json = await res.json();
+      if (!Array.isArray(json)) throw new Error("unexpected non-batch response");
+      const byId = new Map(json.map((r) => [r.id, r]));
+      return FEEDS.map((f, i) => {
+        const r = byId.get(i + 1);
+        if (!r || r.error) throw new Error(r?.error?.message || "missing batch item");
+        return decodePrice(r.result);
+      });
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("all RPC endpoints failed");
+}
+
+/* ── Formatting ────────────────────────────────────────── */
+function scaledPrice(p) { return Number(p.price) * Math.pow(10, p.expo); }
+function scaledConf(p)  { return Number(p.conf)  * Math.pow(10, p.expo); }
+
+function fmtPrice(v) {
+  const dp = Math.abs(v) >= 10 ? 2 : Math.abs(v) >= 0.1 ? 4 : 6;
+  return "$" + v.toLocaleString("en-US", { minimumFractionDigits: dp, maximumFractionDigits: dp });
+}
+function fmtAge(seconds) {
+  if (seconds < 60) return `${Math.max(0, Math.round(seconds))}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m ago`;
+  if (seconds < 172800) return `${(seconds / 3600).toFixed(1)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
+function freshness(publishTime) {
+  const age = Date.now() / 1000 - publishTime;
+  if (age <= FRESH_MAX_S)   return { cls: "fresh",   text: "Fresh" };
+  if (age <= DELAYED_MAX_S) return { cls: "delayed", text: "Delayed" };
+  return { cls: "stale", text: "Stale" };
+}
+function shortId(id) { return id.slice(0, 10) + "…" + id.slice(-6); }
+function esc(s) { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+/* ── Rendering ─────────────────────────────────────────── */
+function renderTiles() {
+  const data = state[network];
+  document.getElementById("tiles").innerHTML = FEEDS.map((f) => {
+    const d = data.get(f.id);
+    if (!d) {
+      return `<div class="tile">
+        <div class="label"><span>${esc(f.symbol)}</span></div>
+        <div class="value pending">—</div>
+        <div class="foot"><span>waiting for data</span></div>
+      </div>`;
+    }
+    const v = scaledPrice(d);
+    const fr = freshness(d.publishTime);
+    let deltaHtml = "";
+    if (d.prevPrice != null && d.prevPublishTime !== d.publishTime) {
+      const prev = Number(d.prevPrice) * Math.pow(10, d.expo);
+      const pct = ((v - prev) / prev) * 100;
+      if (isFinite(pct) && pct !== 0) {
+        const up = pct > 0;
+        deltaHtml = `<div class="delta ${up ? "up" : "down"}">${up ? "▲" : "▼"} ${Math.abs(pct).toFixed(2)}% vs previous update</div>`;
+      }
+    }
+    return `<div class="tile">
+      <div class="label">
+        <span>${esc(f.symbol)}</span>
+        <span class="badge ${fr.cls}"><span class="dot" aria-hidden="true"></span>${fr.text}</span>
+      </div>
+      <div class="value">${fmtPrice(v)}</div>
+      <div class="conf">± ${fmtPrice(scaledConf(d)).slice(1)} confidence</div>
+      ${deltaHtml}
+      <div class="foot"><span>updated ${fmtAge(Date.now() / 1000 - d.publishTime)}</span></div>
+    </div>`;
+  }).join("");
+}
+
+function renderTable() {
+  const data = state[network];
+  document.getElementById("table-body").innerHTML = FEEDS.map((f) => {
+    const d = data.get(f.id);
+    const fr = d ? freshness(d.publishTime) : null;
+    return `<tr>
+      <td>${esc(f.symbol)}</td>
+      <td class="mono" title="${f.id}">${shortId(f.id)}<button class="copy" data-copy="${f.id}" title="Copy full feed ID">copy</button></td>
+      <td class="num">${d ? fmtPrice(scaledPrice(d)) : "—"}</td>
+      <td class="num">${d ? fmtPrice(scaledConf(d)).slice(1) : "—"}</td>
+      <td class="num">${d ? d.expo : "—"}</td>
+      <td>${d ? new Date(d.publishTime * 1000).toISOString().replace("T", " ").slice(0, 19) : "—"}</td>
+      <td>${fr ? `<span class="badge ${fr.cls}"><span class="dot" aria-hidden="true"></span>${fr.text}</span>` : "—"}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderHeader() {
+  const cfg = NETWORKS[network];
+  const link = document.getElementById("contract-link");
+  link.textContent = cfg.contract.slice(0, 8) + "…" + cfg.contract.slice(-6);
+  link.href = cfg.scan + cfg.contract;
+  document.getElementById("net-mainnet").setAttribute("aria-pressed", String(network === "mainnet"));
+  document.getElementById("net-testnet").setAttribute("aria-pressed", String(network === "testnet"));
+}
+
+function setStatus(text) { document.getElementById("status-line").textContent = text; }
+function showError(msg) {
+  const el = document.getElementById("error-banner");
+  if (msg) { el.textContent = "⚠ " + msg; el.style.display = "block"; }
+  else el.style.display = "none";
+}
+
+/* ── Refresh loop ──────────────────────────────────────── */
+let lastFetchOk = null;
+async function refresh() {
+  const net = network;
+  try {
+    const results = await rpcBatch(net);
+    const data = state[net];
+    results.forEach((r, i) => {
+      const id = FEEDS[i].id;
+      const old = data.get(id);
+      if (old && old.publishTime !== r.publishTime) {
+        r.prevPrice = old.price;
+        r.prevPublishTime = old.publishTime;
+      } else if (old) {
+        r.prevPrice = old.prevPrice;
+        r.prevPublishTime = old.prevPublishTime;
+      }
+      data.set(id, r);
+    });
+    lastFetchOk = new Date();
+    showError(null);
+  } catch (e) {
+    showError(`Could not reach ${NETWORKS[net].label.toLowerCase()} RPC endpoints (${e.message}). Showing last known values.`);
+  }
+  if (net !== network) return; // user switched networks mid-fetch
+  renderTiles();
+  renderTable();
+  nextRefreshAt = Date.now() + REFRESH_MS;
+}
+
+function tick() {
+  const left = Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000));
+  const okStr = lastFetchOk
+    ? `Last read ${lastFetchOk.toLocaleTimeString()} · next in ${left}s`
+    : "Connecting…";
+  setStatus(okStr);
+  // keep "updated Xm ago" labels current without waiting for a fetch
+  if (left % 10 === 0) { renderTiles(); renderTable(); }
+}
+
+function startLoop() {
+  clearInterval(refreshTimer);
+  clearInterval(countdownTimer);
+  refresh();
+  refreshTimer = setInterval(refresh, REFRESH_MS);
+  countdownTimer = setInterval(tick, 1000);
+}
+
+function switchNetwork(net) {
+  if (net === network) return;
+  network = net;
+  lastFetchOk = null;
+  renderHeader();
+  renderTiles();
+  renderTable();
+  showError(null);
+  startLoop();
+}
+
+document.getElementById("net-mainnet").addEventListener("click", () => switchNetwork("mainnet"));
+document.getElementById("net-testnet").addEventListener("click", () => switchNetwork("testnet"));
+document.getElementById("refresh-btn").addEventListener("click", () => startLoop());
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".copy");
+  if (!btn) return;
+  navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+    btn.textContent = "copied";
+    setTimeout(() => (btn.textContent = "copy"), 1200);
+  });
+});
+
+renderHeader();
+renderTiles();
+renderTable();
+startLoop();
+</script>
+</body>
+</html>
